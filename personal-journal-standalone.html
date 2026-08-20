@@ -1,0 +1,1150 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Nhật ký cá nhân</title>
+<meta name="theme-color" content="#FBEAEE">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Nhật ký">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%80%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,600;1,400&family=Be+Vietnam+Pro:wght@300;400;500;600;700&display=swap">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  html, body { margin: 0; padding: 0; background: #FBEAEE; overflow-x: hidden; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useCallback, useMemo, useRef } = React;
+
+// ---------- localStorage-backed polyfill for Claude's window.storage API ----------
+window.storage = {
+  async get(key) {
+    const value = localStorage.getItem(key);
+    if (value === null) throw new Error('Key not found: ' + key);
+    return { key, value, shared: false };
+  },
+  async set(key, value) {
+    try { localStorage.setItem(key, value); return { key, value, shared: false }; }
+    catch (e) { return null; }
+  },
+  async delete(key) { localStorage.removeItem(key); return { key, deleted: true, shared: false }; },
+  async list(prefix) {
+    const keys = Object.keys(localStorage).filter((k) => !prefix || k.startsWith(prefix));
+    return { keys, prefix, shared: false };
+  },
+};
+
+// ---------- Hand-drawn icon set ----------
+function IconBase({ size = 20, color = 'currentColor', fill = 'none', style, children, ...rest }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} {...rest}>
+      {children}
+    </svg>
+  );
+}
+const Plus = (props) => (<IconBase {...props}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></IconBase>);
+const Check = (props) => (<IconBase {...props}><polyline points="20 6 9 17 4 12" /></IconBase>);
+const ChevronLeft = (props) => (<IconBase {...props}><polyline points="15 18 9 12 15 6" /></IconBase>);
+const ChevronRight = (props) => (<IconBase {...props}><polyline points="9 18 15 12 9 6" /></IconBase>);
+const Trash2 = (props) => (
+  <IconBase {...props}>
+    <polyline points="3 6 5 6 21 6" />
+    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+    <path d="M10 11v6" /><path d="M14 11v6" />
+    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+  </IconBase>
+);
+const Edit2 = (props) => (<IconBase {...props}><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></IconBase>);
+const Heart = (props) => (<IconBase {...props}><path d="M12 20.5s-7-4.35-9.5-8.8C.9 8.4 2.4 5 6 5c2 0 3.6 1.2 4.5 2.7C11.4 6.2 13 5 15 5c3.6 0 5.1 3.4 3.5 6.7C19 16.15 12 20.5 12 20.5z" /></IconBase>);
+const Calendar = (props) => (
+  <IconBase {...props}>
+    <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+    <line x1="3" y1="9" x2="21" y2="9" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="16" y1="2" x2="16" y2="6" />
+  </IconBase>
+);
+const BookOpen = (props) => (
+  <IconBase {...props}>
+    <path d="M2 5.5c2-1.2 5-1.6 8-.6v13.5c-3-1-6-.6-8 .6v-13.5z" />
+    <path d="M22 5.5c-2-1.2-5-1.6-8-.6v13.5c3-1 6-.6 8 .6v-13.5z" />
+  </IconBase>
+);
+const ListChecks = (props) => (
+  <IconBase {...props}>
+    <path d="M3.5 5.5l1.5 1.5 3-3" /><line x1="11" y1="6" x2="21" y2="6" />
+    <path d="M3.5 12.5l1.5 1.5 3-3" /><line x1="11" y1="13" x2="21" y2="13" /><line x1="9" y1="20" x2="21" y2="20" />
+  </IconBase>
+);
+const Gift = (props) => (
+  <IconBase {...props}>
+    <rect x="3" y="8" width="18" height="4" rx="1" />
+    <rect x="5" y="12" width="14" height="9" rx="1" />
+    <line x1="12" y1="8" x2="12" y2="21" />
+    <path d="M12 8c-1.3-3.2-5-3-5-1 0 1.4 1.8 1.4 5 1z" />
+    <path d="M12 8c1.3-3.2 5-3 5-1 0 1.4-1.8 1.4-5 1z" />
+  </IconBase>
+);
+const Activity = (props) => (<IconBase {...props}><polyline points="3 12 8 12 10 18 14 6 16 12 21 12" /></IconBase>);
+const Wallet = (props) => (
+  <IconBase {...props}>
+    <path d="M3 7a2 2 0 0 1 2-2h13a1 1 0 0 1 1 1v3" />
+    <path d="M3 7v11a2 2 0 0 0 2 2h14a1 1 0 0 0 1-1v-4" />
+    <path d="M16 12h4v4h-4a2 2 0 0 1 0-4z" />
+  </IconBase>
+);
+const Menu = (props) => (<IconBase {...props}><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" /></IconBase>);
+
+// ---------- Design tokens ----------
+const COLORS = {
+  bg: '#FBEAEE', card: '#FFFFFF', cardSoft: '#FFF3F6',
+  pink: '#E8A9BE', pinkDeep: '#D4728F', gold: '#D4AF7A',
+  ink: '#5C4553', muted: '#96788A', border: '#EFC7D3',
+};
+const FONT_DISPLAY = "'Lora', Georgia, serif";
+const FONT_BODY = "'Be Vietnam Pro', -apple-system, 'Segoe UI', sans-serif";
+const EMOJI_OPTIONS = ['🧘‍♀️', '💧', '📖', '🏃‍♀️', '🥗', '✍️', '🎨', '🧹', '💤', '🌿', '🍵', '🌸', '🐰', '🎀'];
+const QUOTES = [
+  'Từng bước nhỏ mỗi ngày cũng là một dạng tiến bộ.', 'Không cần hoàn hảo, chỉ cần đều đặn.',
+  'Hôm nay là một cơ hội mới để chăm sóc bản thân.', 'Bạn đang xây phiên bản tốt hơn của chính mình, từng chút một.',
+  'Sự kiên trì nhỏ hôm nay là món quà cho tương lai.', 'Nghỉ một ngày không sao cả, quan trọng là quay lại.',
+  'Mỗi thói quen tốt là một hạt giống bạn đang gieo.', 'Bạn xứng đáng với những điều tốt bạn đang làm cho bản thân.',
+  'Chậm mà chắc, đây là hành trình của riêng bạn.', 'Cố gắng mỗi ngày như vậy, thật đáng để tự hào.',
+];
+const WEIGHT_NOTES = [
+  'Khỏe mạnh quan trọng hơn một con số trên cân.',
+  'Uống đủ nước, ăn đủ chất, ngủ đủ giấc — ba điều nhỏ tạo nên khác biệt lớn.',
+  'Ăn chậm lại, cơ thể sẽ tự báo khi nào là đủ.',
+  'Vận động vì bạn yêu thương cơ thể mình, không phải để trừng phạt nó.',
+  'Tiến bộ không phải lúc nào cũng nhìn thấy trên cân, đôi khi là ở cách bạn cảm nhận mỗi ngày.',
+  'Đều đặn từng ngày quan trọng hơn một ngày hoàn hảo.',
+];
+const MOODS = [
+  { value: 'happy', label: 'Vui', color: '#F4D58D' }, { value: 'calm', label: 'Bình yên', color: '#A8D5BA' },
+  { value: 'excited', label: 'Yêu đời', color: '#F2A6A6' }, { value: 'sad', label: 'Buồn', color: '#A6B8E8' },
+  { value: 'tired', label: 'Mệt', color: '#C5B8CC' }, { value: 'neutral', label: 'Bình thường', color: '#E8DCC8' },
+];
+const WEEKDAYS = [
+  { label: 'T2', value: 1 }, { label: 'T3', value: 2 }, { label: 'T4', value: 3 }, { label: 'T5', value: 4 },
+  { label: 'T6', value: 5 }, { label: 'T7', value: 6 }, { label: 'CN', value: 0 },
+];
+const DEFAULT_HABITS = [
+  { id: 'h1', name: 'Yoga buổi sáng', icon: '🧘‍♀️', days: [2, 5] },
+  { id: 'h2', name: 'Uống đủ nước', icon: '💧', days: null },
+  { id: 'h3', name: 'Đọc sách', icon: '📖', days: null },
+];
+const HABITS_KEY = 'habit-tracker-data';
+const JOURNAL_KEY = 'journal-data';
+const PLANNER_KEY = 'planner-data';
+const GOALS_KEY = 'goals-data';
+const WEIGHT_VICTORIES_KEY = 'weight-victories';
+const WEIGHT_LOG_KEY = 'weight-log';
+const WISHLIST_KEY = 'wishlist-data';
+const FINANCE_KEY = 'finance-data';
+
+// ---------- Date / format utilities ----------
+function pad(n) { return String(n).padStart(2, '0'); }
+function todayStr() { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
+function shiftDate(dateStr, days) { const d = new Date(dateStr + 'T00:00:00'); d.setDate(d.getDate() + days); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
+function shiftMonth(dateStr, months) { const d = new Date(dateStr + 'T00:00:00'); d.setMonth(d.getMonth() + months); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
+function dayOfYear() { const d = new Date(); const start = new Date(d.getFullYear(), 0, 0); return Math.floor((d - start) / 86400000); }
+function getMonday(dateStr) { const d = new Date(dateStr + 'T00:00:00'); const day = d.getDay(); const diff = day === 0 ? -6 : 1 - day; d.setDate(d.getDate() + diff); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
+function weekKeyFor(dateStr) { return getMonday(dateStr); }
+function monthKeyFor(dateStr) { const d = new Date(dateStr + 'T00:00:00'); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; }
+function formatShortDate(dateStr) { const d = new Date(dateStr + 'T00:00:00'); return `${d.getDate()}/${d.getMonth() + 1}`; }
+function formatVND(n) { return (n || 0).toLocaleString('vi-VN') + 'đ'; }
+function periodLabelFor(scope, refDate) {
+  if (scope === 'day') return new Date(refDate + 'T00:00:00').toLocaleDateString('vi-VN', { weekday: 'long', day: 'numeric', month: 'long' });
+  if (scope === 'week') {
+    const monday = getMonday(refDate); const sunday = shiftDate(monday, 6);
+    const m = new Date(monday + 'T00:00:00'); const s = new Date(sunday + 'T00:00:00');
+    return `${m.getDate()}/${m.getMonth() + 1} – ${s.getDate()}/${s.getMonth() + 1}`;
+  }
+  const d = new Date(refDate + 'T00:00:00'); return `Tháng ${d.getMonth() + 1}, ${d.getFullYear()}`;
+}
+function isScheduled(habit, dateStr) { if (!habit.days) return true; const weekday = new Date(dateStr + 'T00:00:00').getDay(); return habit.days.includes(weekday); }
+function frequencyLabel(habit) { return habit.days.map((d) => { const w = WEEKDAYS.find((x) => x.value === d); return w ? w.label : ''; }).join(' · '); }
+function getMonthGrid(year, month) {
+  const firstDay = new Date(year, month, 1); const startWeekday = (firstDay.getDay() + 6) % 7;
+  const daysInMonth = new Date(year, month + 1, 0).getDate(); const cells = [];
+  for (let i = 0; i < startWeekday; i++) cells.push(null);
+  for (let day = 1; day <= daysInMonth; day++) cells.push(day);
+  return cells;
+}
+function bucketColor(status) {
+  if (status === null || status === undefined) return 'transparent';
+  if (status === 0) return 'rgba(212,114,143,0.10)';
+  if (status < 0.5) return 'rgba(212,114,143,0.32)';
+  if (status < 1) return 'rgba(212,114,143,0.58)';
+  return '#D4728F';
+}
+
+// ---------- Shared UI pieces ----------
+function ProgressRing({ done, total }) {
+  const size = 76, stroke = 7, r = (size - stroke) / 2, c = 2 * Math.PI * r;
+  const pct = total ? done / total : 0; const offset = c * (1 - pct);
+  return (
+    <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(212,114,143,0.15)" strokeWidth={stroke} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={COLORS.pinkDeep} strokeWidth={stroke} strokeDasharray={c} strokeDashoffset={offset} strokeLinecap="round" style={{ transition: 'stroke-dashoffset 600ms ease' }} />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center"><span style={{ color: COLORS.ink }} className="text-sm font-semibold">{done}/{total}</span></div>
+    </div>
+  );
+}
+function SectionHeader({ title, subtitle, extra }) {
+  return (
+    <div className="flex items-start justify-between gap-4 mb-5">
+      <div>
+        <div className="flex items-center gap-1.5 mb-1.5">
+          <span style={{ fontSize: 13 }}>🎀</span>
+          <span className="text-xs uppercase tracking-widest" style={{ color: COLORS.muted }}>Nhật ký cá nhân</span>
+        </div>
+        <h2 style={{ color: COLORS.ink, fontFamily: FONT_DISPLAY }} className="text-xl font-semibold">{title}</h2>
+        {subtitle && <p className="text-sm mt-1 capitalize" style={{ color: COLORS.muted }}>{subtitle}</p>}
+      </div>
+      {extra}
+    </div>
+  );
+}
+function FrequencyPicker({ mode, setMode, days, toggleDay }) {
+  return (
+    <>
+      <div className="flex gap-2 mb-3">
+        <button onClick={() => setMode('daily')} className="flex-1 rounded-xl py-2 text-xs font-medium" style={{ backgroundColor: mode === 'daily' ? COLORS.pinkDeep : 'transparent', color: mode === 'daily' ? '#FFFFFF' : COLORS.muted, border: `1px solid ${mode === 'daily' ? COLORS.pinkDeep : COLORS.border}` }}>Hằng ngày</button>
+        <button onClick={() => setMode('custom')} className="flex-1 rounded-xl py-2 text-xs font-medium" style={{ backgroundColor: mode === 'custom' ? COLORS.pinkDeep : 'transparent', color: mode === 'custom' ? '#FFFFFF' : COLORS.muted, border: `1px solid ${mode === 'custom' ? COLORS.pinkDeep : COLORS.border}` }}>Chọn ngày</button>
+      </div>
+      {mode === 'custom' && (
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {WEEKDAYS.map((w) => (<button key={w.value} onClick={() => toggleDay(w.value)} className="w-9 h-9 rounded-full text-xs font-medium" style={{ backgroundColor: days.includes(w.value) ? COLORS.pinkDeep : 'transparent', color: days.includes(w.value) ? '#FFFFFF' : COLORS.muted, border: `1px solid ${days.includes(w.value) ? COLORS.pinkDeep : COLORS.border}` }}>{w.label}</button>))}
+        </div>
+      )}
+    </>
+  );
+}
+function LinkSelector({ value, onChange, scope, plannerData, dayOptions, weekOptions }) {
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full rounded-xl px-3 py-2 text-xs mb-2" style={{ border: `1px solid ${COLORS.border}`, color: COLORS.ink, backgroundColor: '#FFFFFF' }}>
+      <option value="">— Tự nhập bước riêng —</option>
+      {dayOptions.length > 0 && (
+        <optgroup label="Kế hoạch ngày">
+          {dayOptions.map((d) => (<option key={'d' + d} value={`day|${d}`}>{formatShortDate(d)} ({plannerData.day[d].length} việc)</option>))}
+        </optgroup>
+      )}
+      {scope === 'month' && weekOptions.length > 0 && (
+        <optgroup label="Kế hoạch tuần">
+          {weekOptions.map((w) => (<option key={'w' + w} value={`week|${w}`}>{periodLabelFor('week', w)} ({plannerData.week[w].length} bước)</option>))}
+        </optgroup>
+      )}
+    </select>
+  );
+}
+function RewardModeForm({ mode, setMode, textVal, setTextVal, wishVal, setWishVal, wishlistData }) {
+  return (
+    <>
+      <div className="flex gap-2 mb-2">
+        <button onClick={() => setMode('text')} className="flex-1 rounded-xl py-1.5 text-xs font-medium" style={{ backgroundColor: mode === 'text' ? COLORS.pinkDeep : 'transparent', color: mode === 'text' ? '#FFFFFF' : COLORS.muted, border: `1px solid ${mode === 'text' ? COLORS.pinkDeep : COLORS.border}` }}>Tự nhập</button>
+        <button onClick={() => setMode('wishlist')} className="flex-1 rounded-xl py-1.5 text-xs font-medium" style={{ backgroundColor: mode === 'wishlist' ? COLORS.pinkDeep : 'transparent', color: mode === 'wishlist' ? '#FFFFFF' : COLORS.muted, border: `1px solid ${mode === 'wishlist' ? COLORS.pinkDeep : COLORS.border}` }}>Từ Wishlist</button>
+      </div>
+      {mode === 'text' ? (
+        <input value={textVal} onChange={(e) => setTextVal(e.target.value)} placeholder="Phần thưởng (VD: Mua túi xách mới)" className="w-full rounded-xl px-3 py-2 text-sm mb-2" style={{ border: `1px solid ${COLORS.border}`, color: COLORS.ink, backgroundColor: '#FFFFFF', fontFamily: FONT_BODY }} />
+      ) : (
+        <select value={wishVal} onChange={(e) => setWishVal(e.target.value)} className="w-full rounded-xl px-3 py-2 text-sm mb-2" style={{ border: `1px solid ${COLORS.border}`, color: COLORS.ink, backgroundColor: '#FFFFFF' }}>
+          <option value="">— Chọn món trong Wishlist —</option>
+          {wishlistData.map((w) => (<option key={w.id} value={w.id}>{w.name}</option>))}
+        </select>
+      )}
+    </>
+  );
+}
+function WeightChart({ data }) {
+  if (data.length < 2) return <p className="text-xs text-center py-6" style={{ color: COLORS.muted }}>Cần ít nhất 2 lần ghi để hiện biểu đồ.</p>;
+  const width = 320, height = 140, pad2 = 28;
+  const values = data.map((d) => d.value);
+  const minV = Math.min(...values), maxV = Math.max(...values);
+  const range = maxV - minV || 1;
+  const pts = data.map((d, i) => ({
+    x: pad2 + (i / (data.length - 1)) * (width - pad2 * 2),
+    y: pad2 + (1 - (d.value - minV) / range) * (height - pad2 * 2),
+  }));
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} className="w-full" style={{ maxHeight: 160 }}>
+      <polyline points={pts.map((p) => `${p.x},${p.y}`).join(' ')} fill="none" stroke={COLORS.pinkDeep} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      {pts.map((p, i) => (<circle key={i} cx={p.x} cy={p.y} r="3" fill={COLORS.pinkDeep} />))}
+      <text x={pad2} y={height - 6} fontSize="9" fill={COLORS.muted}>{formatShortDate(data[0].date)}</text>
+      <text x={width - pad2} y={height - 6} fontSize="9" fill={COLORS.muted} textAnchor="end">{formatShortDate(data[data.length - 1].date)}</text>
+      <text x={pad2} y={16} fontSize="9" fill={COLORS.muted}>{maxV} kg</text>
+      <text x={pad2} y={height - pad2 + 14} fontSize="9" fill={COLORS.muted}>{minV} kg</text>
+    </svg>
+  );
+}
+
+// ---------- Habits tab ----------
+function HabitsTab({ habits, setHabits, completions, setCompletions, today }) {
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newIcon, setNewIcon] = useState(EMOJI_OPTIONS[0]);
+  const [newFrequencyMode, setNewFrequencyMode] = useState('daily');
+  const [newDays, setNewDays] = useState([]);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [editIcon, setEditIcon] = useState('');
+  const [editFrequencyMode, setEditFrequencyMode] = useState('daily');
+  const [editDays, setEditDays] = useState([]);
+
+  const isDone = useCallback((habitId, dateStr) => !!(completions[habitId] && completions[habitId].includes(dateStr)), [completions]);
+  const toggleToday = (habitId) => setCompletions((prev) => { const list = prev[habitId] ? [...prev[habitId]] : []; const idx = list.indexOf(today); if (idx >= 0) list.splice(idx, 1); else list.push(today); return { ...prev, [habitId]: list }; });
+  const toggleNewDay = (val) => setNewDays((prev) => (prev.includes(val) ? prev.filter((v) => v !== val) : [...prev, val]));
+  const toggleEditDay = (val) => setEditDays((prev) => (prev.includes(val) ? prev.filter((v) => v !== val) : [...prev, val]));
+  const addHabit = () => {
+    const name = newName.trim(); if (!name) return;
+    const days = newFrequencyMode === 'custom' && newDays.length > 0 ? [...newDays].sort((a, b) => a - b) : null;
+    setHabits((prev) => [...prev, { id: 'h' + Date.now(), name, icon: newIcon, days }]);
+    setNewName(''); setNewIcon(EMOJI_OPTIONS[0]); setNewFrequencyMode('daily'); setNewDays([]); setShowAddForm(false);
+  };
+  const deleteHabit = (id) => { setHabits((prev) => prev.filter((h) => h.id !== id)); setCompletions((prev) => { const copy = { ...prev }; delete copy[id]; return copy; }); setConfirmDeleteId(null); };
+  const startEdit = (habit) => { setConfirmDeleteId(null); setEditingId(habit.id); setEditName(habit.name); setEditIcon(habit.icon); setEditFrequencyMode(habit.days ? 'custom' : 'daily'); setEditDays(habit.days || []); };
+  const saveEdit = () => {
+    const name = editName.trim(); if (!name) return;
+    const days = editFrequencyMode === 'custom' && editDays.length > 0 ? [...editDays].sort((a, b) => a - b) : null;
+    setHabits((prev) => prev.map((h) => (h.id === editingId ? { ...h, name, icon: editIcon, days } : h)));
+    setEditingId(null);
+  };
+  const getStreak = useCallback((habit) => {
+    let streak = 0, grace = false;
+    for (let offset = 0; offset > -400; offset--) {
+      const d = shiftDate(today, offset);
+      if (!isScheduled(habit, d)) continue;
+      const done = isDone(habit.id, d);
+      if (done) streak += 1; else if (offset === 0 && !grace) grace = true; else break;
+    }
+    return streak;
+  }, [isDone, today]);
+  const last7 = useMemo(() => { const arr = []; for (let i = -6; i <= 0; i++) arr.push(shiftDate(today, i)); return arr; }, [today]);
+  const todayHabits = habits.filter((h) => isScheduled(h, today));
+  const completedTodayCount = todayHabits.filter((h) => isDone(h.id, today)).length;
+  const quote = QUOTES[dayOfYear() % QUOTES.length];
+  const formattedDate = new Date().toLocaleDateString('vi-VN', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  return (
+    <div>
+      <SectionHeader title="Thói quen mỗi ngày" subtitle={formattedDate} extra={todayHabits.length > 0 && <ProgressRing done={completedTodayCount} total={todayHabits.length} />} />
+      <div className="mb-6 border-l-2 pl-3" style={{ borderColor: COLORS.pink }}>
+        <p style={{ color: COLORS.muted }} className="text-xs uppercase tracking-widest mb-1">Ghi chú hôm nay</p>
+        <p style={{ color: COLORS.ink, fontFamily: FONT_DISPLAY }} className="text-base italic leading-relaxed">{quote}</p>
+      </div>
+      <div className="space-y-3 mb-6">
+        {habits.length === 0 ? (
+          <div className="rounded-2xl py-10 px-6 text-center" style={{ border: `2px dashed ${COLORS.pink}` }}>
+            <p style={{ color: COLORS.ink }} className="text-sm mb-1">🐰 Trang nhật ký này chưa có gì.</p>
+            <p style={{ color: COLORS.muted }} className="text-xs">Thêm thói quen đầu tiên bên dưới để bắt đầu theo dõi.</p>
+          </div>
+        ) : (
+          habits.map((habit) => {
+            if (editingId === habit.id) {
+              return (
+                <div key={habit.id} className="rounded-2xl px-4 py-4" style={{ backgroundColor: COLORS.card, boxShadow: '0 2px 10px rgba(212,114,143,0.10)' }}>
+                  <div className="flex flex-wrap gap-2 mb-3">{EMOJI_OPTIONS.map((e) => (<button key={e} onClick={() => setEditIcon(e)} className="w-9 h-9 rounded-full flex items-center justify-center text-base" style={{ backgroundColor: editIcon === e ? COLORS.pinkDeep : 'transparent', border: `1px solid ${COLORS.border}` }}>{e}</button>))}</div>
+                  <input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Tên thói quen" className="w-full rounded-xl px-3 py-2 text-sm mb-3" style={{ border: `1px solid ${COLORS.border}`, color: COLORS.ink, backgroundColor: '#FFFFFF', fontFamily: FONT_BODY }} autoFocus />
+                  <FrequencyPicker mode={editFrequencyMode} setMode={setEditFrequencyMode} days={editDays} toggleDay={toggleEditDay} />
+                  <div className="flex gap-2">
+                    <button onClick={saveEdit} className="flex-1 text-sm font-medium rounded-xl py-2" style={{ backgroundColor: COLORS.pinkDeep, color: '#FFFFFF' }}>Lưu thay đổi</button>
+                    <button onClick={() => setEditingId(null)} className="px-4 rounded-xl text-sm" style={{ color: COLORS.muted, border: `1px solid ${COLORS.border}` }}>Hủy</button>
+                  </div>
+                </div>
+              );
+            }
+            const done = isDone(habit.id, today); const streak = getStreak(habit);
+            return (
+              <div key={habit.id} className="rounded-2xl px-4 py-3" style={{ backgroundColor: COLORS.card, boxShadow: '0 2px 10px rgba(212,114,143,0.10)' }}>
+                <div className="flex items-center gap-3">
+                  <button onClick={() => toggleToday(habit.id)} className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-colors" style={{ backgroundColor: done ? COLORS.pinkDeep : 'transparent', border: `2px solid ${done ? COLORS.pinkDeep : COLORS.border}` }} aria-label={done ? 'Bỏ đánh dấu hôm nay' : 'Đánh dấu hoàn thành hôm nay'}>{done && <Check size={16} color="#FFFFFF" />}</button>
+                  <span className="text-xl flex-shrink-0">{habit.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <p style={{ color: COLORS.ink }} className="text-sm font-medium truncate">{habit.name}</p>
+                    {(streak > 0 || habit.days) && (
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                        {streak > 0 && <span className="flex items-center gap-1 text-xs" style={{ color: COLORS.muted }}>🐰 {streak} lần liên tiếp</span>}
+                        {habit.days && <span className="text-xs" style={{ color: COLORS.muted }}>{frequencyLabel(habit)}</span>}
+                      </div>
+                    )}
+                  </div>
+                  {confirmDeleteId === habit.id ? (
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button onClick={() => deleteHabit(habit.id)} className="text-xs font-medium px-2 py-1" style={{ color: COLORS.pinkDeep }}>Xóa</button>
+                      <button onClick={() => setConfirmDeleteId(null)} className="text-xs px-2 py-1" style={{ color: COLORS.muted }}>Thôi</button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-0.5 flex-shrink-0">
+                      <button onClick={() => startEdit(habit)} className="p-1 opacity-40 hover:opacity-70 transition-opacity" style={{ color: COLORS.muted }} aria-label="Sửa thói quen"><Edit2 size={14} /></button>
+                      <button onClick={() => { setEditingId(null); setConfirmDeleteId(habit.id); }} className="p-1 opacity-40 hover:opacity-70 transition-opacity" style={{ color: COLORS.muted }} aria-label="Xóa thói quen"><Trash2 size={15} /></button>
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5 mt-3 pl-12">
+                  {last7.map((d) => {
+                    const scheduled = isScheduled(habit, d);
+                    if (!scheduled) return <div key={d} className="w-2.5 h-2.5" />;
+                    const dDone = isDone(habit.id, d); const isToday = d === today;
+                    return <div key={d} className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: dDone ? COLORS.pink : 'transparent', border: `${isToday ? 2 : 1}px solid ${isToday ? COLORS.gold : COLORS.border}` }} />;
+                  })}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+      {showAddForm ? (
+        <div className="rounded-2xl px-4 py-4 mb-4" style={{ backgroundColor: COLORS.card, boxShadow: '0 2px 10px rgba(212,114,143,0.10)' }}>
+          <div className="flex flex-wrap gap-2 mb-3">{EMOJI_OPTIONS.map((e) => (<button key={e} onClick={() => setNewIcon(e)} className="w-9 h-9 rounded-full flex items-center justify-center text-base" style={{ backgroundColor: newIcon === e ? COLORS.pinkDeep : 'transparent', border: `1px solid ${COLORS.border}` }}>{e}</button>))}</div>
+          <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Tên thói quen" className="w-full rounded-xl px-3 py-2 text-sm mb-3" style={{ border: `1px solid ${COLORS.border}`, color: COLORS.ink, backgroundColor: '#FFFFFF', fontFamily: FONT_BODY }} autoFocus />
+          <FrequencyPicker mode={newFrequencyMode} setMode={setNewFrequencyMode} days={newDays} toggleDay={toggleNewDay} />
+          <div className="flex gap-2">
+            <button onClick={addHabit} className="flex-1 text-sm font-medium rounded-xl py-2" style={{ backgroundColor: COLORS.pinkDeep, color: '#FFFFFF' }}>Thêm thói quen</button>
+            <button onClick={() => { setShowAddForm(false); setNewName(''); setNewFrequencyMode('daily'); setNewDays([]); }} className="px-4 rounded-xl text-sm" style={{ color: COLORS.muted, border: `1px solid ${COLORS.border}` }}>Hủy</button>
+          </div>
+        </div>
+      ) : (<button onClick={() => setShowAddForm(true)} className="w-full rounded-2xl py-3 flex items-center justify-center gap-2 text-sm font-medium mb-2" style={{ border: `2px dashed ${COLORS.pink}`, color: COLORS.pinkDeep }}><Plus size={16} />Thêm thói quen</button>)}
+    </div>
+  );
+}
+
+// ---------- Journal tab ----------
+function JournalTab({ journalEntries, setJournalEntries, today }) {
+  const [viewDate, setViewDate] = useState(today);
+  const entry = journalEntries[viewDate] || { note: '', gratitude: [], mood: null };
+  const gratitudeList = entry.gratitude || [];
+  const updateNote = (text) => setJournalEntries((prev) => ({ ...prev, [viewDate]: { ...(prev[viewDate] || { note: '', gratitude: [], mood: null }), note: text } }));
+  const updateGratitudeAt = (idx, text) => setJournalEntries((prev) => { const existing = prev[viewDate] || { note: '', gratitude: [], mood: null }; const g = [...(existing.gratitude || [])]; g[idx] = text; return { ...prev, [viewDate]: { ...existing, gratitude: g } }; });
+  const deleteGratitudeAt = (idx) => setJournalEntries((prev) => { const existing = prev[viewDate] || { note: '', gratitude: [], mood: null }; const g = [...(existing.gratitude || [])]; g.splice(idx, 1); return { ...prev, [viewDate]: { ...existing, gratitude: g } }; });
+  const updateMood = (value) => setJournalEntries((prev) => { const existing = prev[viewDate] || { note: '', gratitude: [], mood: null }; const newMood = existing.mood === value ? null : value; return { ...prev, [viewDate]: { ...existing, mood: newMood } }; });
+  const goPrevDay = () => setViewDate((d) => shiftDate(d, -1));
+  const goNextDay = () => setViewDate((d) => (d < today ? shiftDate(d, 1) : d));
+  const formattedViewDate = new Date(viewDate + 'T00:00:00').toLocaleDateString('vi-VN', { weekday: 'long', day: 'numeric', month: 'long' });
+  return (
+    <div>
+      <SectionHeader title="Nhật ký" />
+      <div className="flex items-center justify-between mb-5">
+        <button onClick={goPrevDay} className="p-2" style={{ color: COLORS.ink }} aria-label="Ngày trước"><ChevronLeft size={18} /></button>
+        <p style={{ color: COLORS.ink }} className="text-sm font-medium capitalize">{viewDate === today ? 'Hôm nay' : formattedViewDate}</p>
+        <button onClick={goNextDay} disabled={viewDate >= today} className="p-2" style={{ color: COLORS.ink, opacity: viewDate >= today ? 0.25 : 1 }} aria-label="Ngày sau"><ChevronRight size={18} /></button>
+      </div>
+      <div className="rounded-2xl p-4 mb-4" style={{ backgroundColor: COLORS.card, boxShadow: '0 2px 10px rgba(212,114,143,0.10)' }}>
+        <p className="text-xs uppercase tracking-widest mb-3" style={{ color: COLORS.muted }}>Tâm trạng hôm nay</p>
+        <div className="flex gap-3 flex-wrap">{MOODS.map((m) => (<button key={m.value} onClick={() => updateMood(m.value)} className="flex flex-col items-center gap-1"><div className="w-9 h-9 rounded-full" style={{ backgroundColor: m.color, border: entry.mood === m.value ? `2.5px solid ${COLORS.ink}` : '2.5px solid transparent' }} /><span className="text-xs" style={{ color: COLORS.muted }}>{m.label}</span></button>))}</div>
+      </div>
+      <div className="rounded-2xl p-4 mb-4" style={{ backgroundColor: COLORS.card, boxShadow: '0 2px 10px rgba(212,114,143,0.10)' }}>
+        <p className="text-xs uppercase tracking-widest mb-2" style={{ color: COLORS.muted }}>Hôm nay bạn thế nào?</p>
+        <textarea value={entry.note} onChange={(e) => updateNote(e.target.value)} placeholder="Viết vài dòng..." rows={6} className="w-full text-sm resize-none outline-none" style={{ color: COLORS.ink, backgroundColor: 'transparent', lineHeight: 1.7, fontFamily: FONT_BODY }} />
+      </div>
+      <div className="rounded-2xl p-4 mb-4" style={{ backgroundColor: COLORS.card, boxShadow: '0 2px 10px rgba(212,114,143,0.10)' }}>
+        <p className="text-xs uppercase tracking-widest mb-3" style={{ color: COLORS.muted }}>Góc biết ơn</p>
+        <div className="space-y-2">
+          {[...gratitudeList, ''].map((val, idx) => (
+            <div key={idx} className="flex items-center gap-2">
+              <span className="text-xs" style={{ color: COLORS.pinkDeep }}>{idx + 1}.</span>
+              <input value={val} onChange={(e) => updateGratitudeAt(idx, e.target.value)} placeholder="Điều bạn biết ơn hôm nay..." className="flex-1 text-sm outline-none bg-transparent pb-1" style={{ color: COLORS.ink, borderBottom: `1px solid ${COLORS.border}`, fontFamily: FONT_BODY }} />
+              {idx < gratitudeList.length && val && <button onClick={() => deleteGratitudeAt(idx)} className="flex-shrink-0 opacity-30 hover:opacity-70" style={{ color: COLORS.muted }}><Trash2 size={11} /></button>}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Planner tab ----------
+function PlannerTab({ plannerData, setPlannerData, today }) {
+  const [scope, setScope] = useState('day');
+  const [refDate, setRefDate] = useState(today);
+  const [newTask, setNewTask] = useState('');
+  const [linkedValue, setLinkedValue] = useState('');
+  const [editingTaskId, setEditingTaskId] = useState(null);
+  const [editText, setEditText] = useState('');
+  const [editLinkedValue, setEditLinkedValue] = useState('');
+
+  const periodKey = scope === 'day' ? refDate : scope === 'week' ? weekKeyFor(refDate) : monthKeyFor(refDate);
+  const tasks = (plannerData[scope] && plannerData[scope][periodKey]) || [];
+
+  const isDayPlanComplete = (dateStr) => { const t = plannerData.day[dateStr]; return !!(t && t.length > 0 && t.every((x) => x.done)); };
+  const isWeekPlanComplete = (wKey) => { const t = plannerData.week[wKey]; if (!t || t.length === 0) return false; return t.every((x) => effectiveDone(x)); };
+  const effectiveDone = (item) => { if (item.linkedDate) return isDayPlanComplete(item.linkedDate); if (item.linkedWeek) return isWeekPlanComplete(item.linkedWeek); return item.done; };
+
+  const dayOptions = useMemo(() => Object.keys(plannerData.day).filter((d) => plannerData.day[d] && plannerData.day[d].length > 0).sort().reverse(), [plannerData.day]);
+  const weekOptions = useMemo(() => Object.keys(plannerData.week).filter((w) => plannerData.week[w] && plannerData.week[w].length > 0).sort().reverse(), [plannerData.week]);
+
+  const addTask = () => {
+    let item;
+    if (scope !== 'day' && linkedValue) {
+      const [type, val] = linkedValue.split('|');
+      item = { id: 't' + Date.now(), text: '', done: false, linkedDate: type === 'day' ? val : null, linkedWeek: type === 'week' ? val : null };
+    } else {
+      const text = newTask.trim(); if (!text) return;
+      item = { id: 't' + Date.now(), text, done: false, linkedDate: null, linkedWeek: null };
+    }
+    setPlannerData((prev) => ({ ...prev, [scope]: { ...prev[scope], [periodKey]: [...(prev[scope][periodKey] || []), item] } }));
+    setNewTask(''); setLinkedValue('');
+  };
+  const toggleTask = (id) => setPlannerData((prev) => ({ ...prev, [scope]: { ...prev[scope], [periodKey]: (prev[scope][periodKey] || []).map((t) => (t.id === id ? { ...t, done: !t.done } : t)) } }));
+  const deleteTask = (id) => setPlannerData((prev) => ({ ...prev, [scope]: { ...prev[scope], [periodKey]: (prev[scope][periodKey] || []).filter((t) => t.id !== id) } }));
+  const startEdit = (item) => { setEditingTaskId(item.id); setEditText(item.text || ''); setEditLinkedValue(item.linkedDate ? `day|${item.linkedDate}` : item.linkedWeek ? `week|${item.linkedWeek}` : ''); };
+  const saveEdit = () => {
+    setPlannerData((prev) => ({
+      ...prev,
+      [scope]: {
+        ...prev[scope],
+        [periodKey]: (prev[scope][periodKey] || []).map((t) => {
+          if (t.id !== editingTaskId) return t;
+          if (scope !== 'day' && editLinkedValue) {
+            const [type, val] = editLinkedValue.split('|');
+            return { ...t, text: '', linkedDate: type === 'day' ? val : null, linkedWeek: type === 'week' ? val : null };
+          }
+          return { ...t, text: editText.trim() || t.text, linkedDate: null, linkedWeek: null };
+        }),
+      },
+    }));
+    setEditingTaskId(null);
+  };
+  const goPrev = () => { if (scope === 'day') setRefDate((d) => shiftDate(d, -1)); else if (scope === 'week') setRefDate((d) => shiftDate(d, -7)); else setRefDate((d) => shiftMonth(d, -1)); };
+  const goNext = () => { if (scope === 'day') setRefDate((d) => shiftDate(d, 1)); else if (scope === 'week') setRefDate((d) => shiftDate(d, 7)); else setRefDate((d) => shiftMonth(d, 1)); };
+  const scopeLabel = scope === 'day' ? 'ngày' : scope === 'week' ? 'tuần' : 'tháng';
+  const itemLabel = scope === 'day' ? 'việc' : 'bước';
+  const doneCount = tasks.filter((t) => effectiveDone(t)).length;
+
+  return (
+    <div>
+      <SectionHeader title="Kế hoạch" />
+      <div className="flex gap-2 mb-4">{[['day', 'Ngày'], ['week', 'Tuần'], ['month', 'Tháng']].map(([key, label]) => (<button key={key} onClick={() => { setScope(key); setLinkedValue(''); setEditingTaskId(null); }} className="flex-1 rounded-full py-2 text-sm font-medium" style={{ backgroundColor: scope === key ? COLORS.pinkDeep : 'transparent', color: scope === key ? '#FFFFFF' : COLORS.muted, border: scope === key ? 'none' : `1px solid ${COLORS.border}` }}>{label}</button>))}</div>
+      <div className="flex items-center justify-between mb-4">
+        <button onClick={goPrev} className="p-2" style={{ color: COLORS.ink }} aria-label="Trước"><ChevronLeft size={18} /></button>
+        <p className="text-sm font-medium capitalize" style={{ color: COLORS.ink }}>{periodLabelFor(scope, refDate)}</p>
+        <button onClick={goNext} className="p-2" style={{ color: COLORS.ink }} aria-label="Sau"><ChevronRight size={18} /></button>
+      </div>
+      {tasks.length > 0 && (
+        <div className="mb-4">
+          <div className="flex items-center justify-between mb-1.5"><span className="text-xs" style={{ color: COLORS.muted }}>Tiến độ</span><span className="text-xs font-medium" style={{ color: COLORS.ink }}>{doneCount}/{tasks.length} {itemLabel}</span></div>
+          <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: COLORS.border }}><div className="h-full rounded-full transition-all duration-500" style={{ width: `${(doneCount / tasks.length) * 100}%`, backgroundColor: COLORS.pinkDeep }} /></div>
+        </div>
+      )}
+      <div className="space-y-2 mb-4">
+        {tasks.length === 0 && <p className="text-xs text-center py-8" style={{ color: COLORS.muted }}>Chưa có {itemLabel} nào cho {scopeLabel} này.</p>}
+        {tasks.map((item) => {
+          if (editingTaskId === item.id) {
+            return (
+              <div key={item.id} className="rounded-xl px-3 py-3" style={{ backgroundColor: COLORS.card, boxShadow: '0 2px 8px rgba(212,114,143,0.10)' }}>
+                {scope !== 'day' && <LinkSelector value={editLinkedValue} onChange={setEditLinkedValue} scope={scope} plannerData={plannerData} dayOptions={dayOptions} weekOptions={weekOptions} />}
+                {(scope === 'day' || !editLinkedValue) && (<input value={editText} onChange={(e) => setEditText(e.target.value)} placeholder="Nội dung..." className="w-full rounded-xl px-3 py-2 text-xs mb-2 outline-none" style={{ border: `1px solid ${COLORS.border}`, color: COLORS.ink, fontFamily: FONT_BODY }} />)}
+                <div className="flex gap-2">
+                  <button onClick={saveEdit} className="flex-1 text-xs font-medium rounded-xl py-2" style={{ backgroundColor: COLORS.pinkDeep, color: '#FFFFFF' }}>Lưu</button>
+                  <button onClick={() => setEditingTaskId(null)} className="px-3 rounded-xl text-xs" style={{ color: COLORS.muted, border: `1px solid ${COLORS.border}` }}>Hủy</button>
+                </div>
+              </div>
+            );
+          }
+          const done = effectiveDone(item);
+          const linked = !!(item.linkedDate || item.linkedWeek);
+          return (
+            <div key={item.id} className="rounded-xl px-3 py-2.5 flex items-center gap-2.5" style={{ backgroundColor: COLORS.card, boxShadow: '0 2px 8px rgba(212,114,143,0.10)' }}>
+              <button onClick={() => !linked && toggleTask(item.id)} className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: done ? COLORS.pinkDeep : 'transparent', border: `1.5px solid ${done ? COLORS.pinkDeep : COLORS.border}` }}>{done && <Check size={11} color="#FFFFFF" />}</button>
+              <div className="flex-1 min-w-0">
+                {item.linkedDate ? (
+                  <>
+                    <p className="text-sm font-medium" style={{ color: COLORS.ink }}>📅 Ngày {formatShortDate(item.linkedDate)}</p>
+                    <p className="text-xs truncate" style={{ color: COLORS.muted }}>{(plannerData.day[item.linkedDate] || []).map((t) => t.text).join(', ') || 'Chưa có việc'}</p>
+                  </>
+                ) : item.linkedWeek ? (
+                  <>
+                    <p className="text-sm font-medium" style={{ color: COLORS.ink }}>📆 Tuần {periodLabelFor('week', item.linkedWeek)}</p>
+                    <p className="text-xs" style={{ color: COLORS.muted }}>{(plannerData.week[item.linkedWeek] || []).length} bước</p>
+                  </>
+                ) : (<p className="text-sm" style={{ color: done ? COLORS.muted : COLORS.ink, textDecoration: done ? 'line-through' : 'none' }}>{item.text}</p>)}
+              </div>
+              <button onClick={() => startEdit(item)} className="flex-shrink-0 opacity-40 hover:opacity-70 transition-opacity" style={{ color: COLORS.muted }} aria-label="Sửa"><Edit2 size={13} /></button>
+              <button onClick={() => deleteTask(item.id)} className="flex-shrink-0 opacity-40 hover:opacity-70 transition-opacity" style={{ color: COLORS.muted }} aria-label="Xóa"><Trash2 size={13} /></button>
+            </div>
+          );
+        })}
+      </div>
+      {scope !== 'day' && <LinkSelector value={linkedValue} onChange={setLinkedValue} scope={scope} plannerData={plannerData} dayOptions={dayOptions} weekOptions={weekOptions} />}
+      {(scope === 'day' || !linkedValue) ? (
+        <div className="flex gap-2">
+          <input value={newTask} onChange={(e) => setNewTask(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addTask(); }} placeholder={scope === 'day' ? 'Thêm việc cần làm...' : 'Nhập nội dung bước riêng...'} className="flex-1 rounded-xl px-3 py-2 text-sm outline-none" style={{ backgroundColor: COLORS.card, color: COLORS.ink, border: `1px solid ${COLORS.border}`, fontFamily: FONT_BODY }} />
+          <button onClick={addTask} className="rounded-xl px-4 flex items-center justify-center" style={{ backgroundColor: COLORS.pinkDeep }} aria-label="Thêm"><Plus size={18} color="#FFFFFF" /></button>
+        </div>
+      ) : (<button onClick={addTask} className="w-full rounded-xl py-2.5 text-sm font-medium" style={{ backgroundColor: COLORS.pinkDeep, color: '#FFFFFF' }}>Thêm liên kết này</button>)}
+    </div>
+  );
+}
+
+// ---------- Rewards tab (with Wishlist) ----------
+function RewardsTab({ goalsData, setGoalsData, wishlistData, setWishlistData, today }) {
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [rewardMode, setRewardMode] = useState('text');
+  const [newReward, setNewReward] = useState('');
+  const [newWishlistId, setNewWishlistId] = useState('');
+  const [newTarget, setNewTarget] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [achievementInputs, setAchievementInputs] = useState({});
+  const [expandedId, setExpandedId] = useState(null);
+  const [editingGoalId, setEditingGoalId] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [editRewardMode, setEditRewardMode] = useState('text');
+  const [editReward, setEditReward] = useState('');
+  const [editWishlistId, setEditWishlistId] = useState('');
+  const [editTarget, setEditTarget] = useState('');
+  const [newWishName, setNewWishName] = useState('');
+
+  const goals = goalsData.goals || [];
+  const achievementsFor = (goalId) => goalsData.achievements[goalId] || [];
+
+  const addWishItem = () => { const name = newWishName.trim(); if (!name) return; setWishlistData((prev) => [...prev, { id: 'wl' + Date.now(), name, done: false }]); setNewWishName(''); };
+  const toggleWishDone = (id) => setWishlistData((prev) => prev.map((w) => (w.id === id ? { ...w, done: !w.done } : w)));
+  const deleteWishItem = (id) => { setWishlistData((prev) => prev.filter((w) => w.id !== id)); setGoalsData((prev) => ({ ...prev, goals: prev.goals.map((g) => (g.wishlistId === id ? { ...g, wishlistId: null } : g)) })); };
+
+  const addGoal = () => {
+    const name = newName.trim(); if (!name) return;
+    const reward = rewardMode === 'text' ? newReward.trim() : '';
+    const wishlistId = rewardMode === 'wishlist' && newWishlistId ? newWishlistId : null;
+    if (rewardMode === 'text' && !reward) return;
+    if (rewardMode === 'wishlist' && !wishlistId) return;
+    const id = 'g' + Date.now();
+    const targetNum = newTarget.trim() ? parseInt(newTarget.trim(), 10) : null;
+    setGoalsData((prev) => ({ goals: [...prev.goals, { id, name, reward, wishlistId, target: targetNum && targetNum > 0 ? targetNum : null, done: false }], achievements: { ...prev.achievements, [id]: [] } }));
+    setNewName(''); setNewReward(''); setNewWishlistId(''); setNewTarget(''); setRewardMode('text'); setShowAddForm(false);
+  };
+  const deleteGoal = (id) => { setGoalsData((prev) => { const goals2 = prev.goals.filter((g) => g.id !== id); const ach = { ...prev.achievements }; delete ach[id]; return { goals: goals2, achievements: ach }; }); setConfirmDeleteId(null); };
+  const toggleGoalDone = (id) => setGoalsData((prev) => ({ ...prev, goals: prev.goals.map((g) => (g.id === id ? { ...g, done: !g.done } : g)) }));
+  const startEditGoal = (goal) => { setEditingGoalId(goal.id); setEditName(goal.name); setEditRewardMode(goal.wishlistId ? 'wishlist' : 'text'); setEditReward(goal.reward || ''); setEditWishlistId(goal.wishlistId || ''); setEditTarget(goal.target ? String(goal.target) : ''); };
+  const saveEditGoal = () => {
+    const name = editName.trim(); if (!name) return;
+    const reward = editRewardMode === 'text' ? editReward.trim() : '';
+    const wishlistId = editRewardMode === 'wishlist' && editWishlistId ? editWishlistId : null;
+    const targetNum = editTarget.trim() ? parseInt(editTarget.trim(), 10) : null;
+    setGoalsData((prev) => ({ ...prev, goals: prev.goals.map((g) => (g.id === editingGoalId ? { ...g, name, reward, wishlistId, target: targetNum && targetNum > 0 ? targetNum : null } : g)) }));
+    setEditingGoalId(null);
+  };
+  const addAchievement = (goalId) => { const text = (achievementInputs[goalId] || '').trim(); if (!text) return; const entry = { id: 'a' + Date.now(), text, date: today }; setGoalsData((prev) => ({ ...prev, achievements: { ...prev.achievements, [goalId]: [entry, ...(prev.achievements[goalId] || [])] } })); setAchievementInputs((prev) => ({ ...prev, [goalId]: '' })); };
+  const deleteAchievement = (goalId, achId) => setGoalsData((prev) => ({ ...prev, achievements: { ...prev.achievements, [goalId]: (prev.achievements[goalId] || []).filter((a) => a.id !== achId) } }));
+
+  return (
+    <div>
+      <SectionHeader title="Phần thưởng" />
+      <div className="rounded-2xl p-4 mb-5" style={{ backgroundColor: COLORS.card, boxShadow: '0 2px 10px rgba(212,114,143,0.10)' }}>
+        <p className="text-xs uppercase tracking-widest mb-3" style={{ color: COLORS.muted }}>Wishlist</p>
+        <div className="flex gap-2 mb-3">
+          <input value={newWishName} onChange={(e) => setNewWishName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addWishItem(); }} placeholder="Thêm món mong muốn..." className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={{ border: `1px solid ${COLORS.border}`, color: COLORS.ink, fontFamily: FONT_BODY }} />
+          <button onClick={addWishItem} className="rounded-xl px-3 flex items-center justify-center flex-shrink-0" style={{ backgroundColor: COLORS.pinkDeep }}><Plus size={14} color="#FFFFFF" /></button>
+        </div>
+        {wishlistData.length === 0 ? (<p className="text-xs text-center py-2" style={{ color: COLORS.muted }}>Wishlist đang trống.</p>) : (
+          <div className="space-y-1.5">
+            {wishlistData.map((w) => (
+              <div key={w.id} className="flex items-center gap-2">
+                <button onClick={() => toggleWishDone(w.id)} className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: w.done ? COLORS.pinkDeep : 'transparent', border: `1.5px solid ${w.done ? COLORS.pinkDeep : COLORS.border}` }}>{w.done && <Check size={11} color="#FFFFFF" />}</button>
+                <span className="text-xs flex-1" style={{ color: w.done ? COLORS.muted : COLORS.ink, textDecoration: w.done ? 'line-through' : 'none' }}>{w.name}</span>
+                <button onClick={() => deleteWishItem(w.id)} className="flex-shrink-0 opacity-30 hover:opacity-70" style={{ color: COLORS.muted }}><Trash2 size={11} /></button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="space-y-3 mb-6">
+        {goals.length === 0 ? (
+          <div className="rounded-2xl py-10 px-6 text-center" style={{ border: `2px dashed ${COLORS.pink}` }}>
+            <p style={{ color: COLORS.ink }} className="text-sm mb-1">🎁 Chưa có mục tiêu nào.</p>
+            <p style={{ color: COLORS.muted }} className="text-xs">Đặt mục tiêu đầu tiên và treo phần thưởng cho bản thân nhé.</p>
+          </div>
+        ) : goals.map((goal) => {
+          if (editingGoalId === goal.id) {
+            return (
+              <div key={goal.id} className="rounded-2xl px-4 py-4" style={{ backgroundColor: COLORS.card, boxShadow: '0 2px 10px rgba(212,114,143,0.10)' }}>
+                <input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Mục tiêu" className="w-full rounded-xl px-3 py-2 text-sm mb-2" style={{ border: `1px solid ${COLORS.border}`, color: COLORS.ink, backgroundColor: '#FFFFFF', fontFamily: FONT_BODY }} />
+                <RewardModeForm mode={editRewardMode} setMode={setEditRewardMode} textVal={editReward} setTextVal={setEditReward} wishVal={editWishlistId} setWishVal={setEditWishlistId} wishlistData={wishlistData} />
+                <input value={editTarget} onChange={(e) => setEditTarget(e.target.value.replace(/[^0-9]/g, ''))} placeholder="Số thành quả cần đạt (không bắt buộc)" inputMode="numeric" className="w-full rounded-xl px-3 py-2 text-sm mb-3" style={{ border: `1px solid ${COLORS.border}`, color: COLORS.ink, backgroundColor: '#FFFFFF', fontFamily: FONT_BODY }} />
+                <div className="flex gap-2">
+                  <button onClick={saveEditGoal} className="flex-1 text-sm font-medium rounded-xl py-2" style={{ backgroundColor: COLORS.pinkDeep, color: '#FFFFFF' }}>Lưu thay đổi</button>
+                  <button onClick={() => setEditingGoalId(null)} className="px-4 rounded-xl text-sm" style={{ color: COLORS.muted, border: `1px solid ${COLORS.border}` }}>Hủy</button>
+                </div>
+              </div>
+            );
+          }
+          const list = achievementsFor(goal.id);
+          const targetMet = goal.target ? list.length >= goal.target : false;
+          const linkedWish = goal.wishlistId ? wishlistData.find((w) => w.id === goal.wishlistId) : null;
+          const rewardLabel = linkedWish ? linkedWish.name : goal.reward;
+          const rewardClaimed = linkedWish ? linkedWish.done : false;
+          const expanded = expandedId === goal.id;
+          const shown = expanded ? list : list.slice(0, 2);
+          return (
+            <div key={goal.id} className="rounded-2xl px-4 py-4" style={{ backgroundColor: COLORS.card, boxShadow: '0 2px 10px rgba(212,114,143,0.10)', border: (goal.done || rewardClaimed) ? `1.5px solid ${COLORS.gold}` : 'none' }}>
+              <div className="flex items-start justify-between gap-2 mb-1">
+                <div className="flex items-start gap-2 flex-1 min-w-0">
+                  <button onClick={() => toggleGoalDone(goal.id)} className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5" style={{ backgroundColor: goal.done ? COLORS.pinkDeep : 'transparent', border: `2px solid ${goal.done ? COLORS.pinkDeep : COLORS.border}` }} aria-label={goal.done ? 'Bỏ đánh dấu hoàn thành' : 'Đánh dấu hoàn thành mục tiêu'}>
+                    {goal.done && <Check size={13} color="#FFFFFF" />}
+                  </button>
+                  <p style={{ color: COLORS.ink, textDecoration: goal.done ? 'line-through' : 'none' }} className="text-sm font-semibold flex-1 min-w-0">{goal.name}</p>
+                </div>
+                {confirmDeleteId === goal.id ? (
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <button onClick={() => deleteGoal(goal.id)} className="text-xs font-medium px-2 py-1" style={{ color: COLORS.pinkDeep }}>Xóa</button>
+                    <button onClick={() => setConfirmDeleteId(null)} className="text-xs px-2 py-1" style={{ color: COLORS.muted }}>Thôi</button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-0.5 flex-shrink-0">
+                    <button onClick={() => startEditGoal(goal)} className="p-1 opacity-40 hover:opacity-70" style={{ color: COLORS.muted }}><Edit2 size={13} /></button>
+                    <button onClick={() => setConfirmDeleteId(goal.id)} className="p-1 opacity-40 hover:opacity-70" style={{ color: COLORS.muted }}><Trash2 size={14} /></button>
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center gap-2 mb-3 flex-wrap pl-8">
+                <p className="text-xs" style={{ color: COLORS.muted }}>🎀 {rewardLabel}</p>
+                {linkedWish && <button onClick={() => toggleWishDone(linkedWish.id)} className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: rewardClaimed ? 'rgba(212,175,122,0.18)' : 'transparent', color: rewardClaimed ? COLORS.gold : COLORS.pinkDeep, border: `1px solid ${rewardClaimed ? COLORS.gold : COLORS.border}` }}>{rewardClaimed ? '✓ Đã nhận' : 'Đánh dấu đã nhận'}</button>}
+              </div>
+              {targetMet && !rewardClaimed && <div className="rounded-xl px-3 py-2 mb-3 text-xs font-medium text-center" style={{ backgroundColor: 'rgba(212,175,122,0.18)', color: COLORS.gold }}>🎉 Đã đủ thành quả{linkedWish ? ' — đánh dấu nhận thưởng ở trên nhé!' : '!'}</div>}
+              {rewardClaimed && <div className="rounded-xl px-3 py-2 mb-3 text-xs font-medium text-center" style={{ backgroundColor: 'rgba(212,175,122,0.18)', color: COLORS.gold }}>🎉 Đã nhận: {rewardLabel}</div>}
+              {goal.target ? (
+                <div className="mb-3">
+                  <div className="flex items-center justify-between mb-1"><span className="text-xs" style={{ color: COLORS.muted }}>Tiến độ</span><span className="text-xs font-medium" style={{ color: COLORS.ink }}>{list.length}/{goal.target} thành quả</span></div>
+                  <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: COLORS.border }}><div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(100, (list.length / goal.target) * 100)}%`, backgroundColor: targetMet ? COLORS.gold : COLORS.pinkDeep }} /></div>
+                </div>
+              ) : (<p className="text-xs mb-3" style={{ color: COLORS.muted }}>{list.length} thành quả đã ghi nhận</p>)}
+              <div className="flex gap-2 mb-3">
+                <input value={achievementInputs[goal.id] || ''} onChange={(e) => setAchievementInputs((prev) => ({ ...prev, [goal.id]: e.target.value }))} onKeyDown={(e) => { if (e.key === 'Enter') addAchievement(goal.id); }} placeholder="Ghi nhận thành quả nhỏ..." className="flex-1 rounded-xl px-3 py-1.5 text-xs outline-none" style={{ border: `1px solid ${COLORS.border}`, color: COLORS.ink, fontFamily: FONT_BODY }} />
+                <button onClick={() => addAchievement(goal.id)} className="rounded-xl px-3 flex items-center justify-center" style={{ backgroundColor: COLORS.pinkDeep }}><Plus size={14} color="#FFFFFF" /></button>
+              </div>
+              {list.length > 0 && (
+                <div className="space-y-1.5">
+                  {shown.map((a) => (<div key={a.id} className="flex items-center justify-between gap-2"><p className="text-xs flex-1 min-w-0" style={{ color: COLORS.ink }}>• {a.text} <span style={{ color: COLORS.muted }}>({formatShortDate(a.date)})</span></p><button onClick={() => deleteAchievement(goal.id, a.id)} className="flex-shrink-0 opacity-30 hover:opacity-70" style={{ color: COLORS.muted }}><Trash2 size={11} /></button></div>))}
+                  {list.length > 2 && <button onClick={() => setExpandedId(expanded ? null : goal.id)} className="text-xs" style={{ color: COLORS.pinkDeep }}>{expanded ? 'Thu gọn' : `Xem tất cả ${list.length} thành quả`}</button>}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {showAddForm ? (
+        <div className="rounded-2xl px-4 py-4 mb-4" style={{ backgroundColor: COLORS.card, boxShadow: '0 2px 10px rgba(212,114,143,0.10)' }}>
+          <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Mục tiêu (VD: Hoàn thành khóa SQL)" className="w-full rounded-xl px-3 py-2 text-sm mb-2" style={{ border: `1px solid ${COLORS.border}`, color: COLORS.ink, backgroundColor: '#FFFFFF', fontFamily: FONT_BODY }} />
+          <RewardModeForm mode={rewardMode} setMode={setRewardMode} textVal={newReward} setTextVal={setNewReward} wishVal={newWishlistId} setWishVal={setNewWishlistId} wishlistData={wishlistData} />
+          <input value={newTarget} onChange={(e) => setNewTarget(e.target.value.replace(/[^0-9]/g, ''))} placeholder="Số thành quả cần đạt (không bắt buộc)" inputMode="numeric" className="w-full rounded-xl px-3 py-2 text-sm mb-3" style={{ border: `1px solid ${COLORS.border}`, color: COLORS.ink, backgroundColor: '#FFFFFF', fontFamily: FONT_BODY }} />
+          <div className="flex gap-2">
+            <button onClick={addGoal} className="flex-1 text-sm font-medium rounded-xl py-2" style={{ backgroundColor: COLORS.pinkDeep, color: '#FFFFFF' }}>Thêm mục tiêu</button>
+            <button onClick={() => { setShowAddForm(false); setNewName(''); setNewReward(''); setNewWishlistId(''); setNewTarget(''); setRewardMode('text'); }} className="px-4 rounded-xl text-sm" style={{ color: COLORS.muted, border: `1px solid ${COLORS.border}` }}>Hủy</button>
+          </div>
+        </div>
+      ) : (<button onClick={() => setShowAddForm(true)} className="w-full rounded-2xl py-3 flex items-center justify-center gap-2 text-sm font-medium mb-2" style={{ border: `2px dashed ${COLORS.pink}`, color: COLORS.pinkDeep }}><Plus size={16} />Đặt mục tiêu mới</button>)}
+    </div>
+  );
+}
+
+// ---------- Weight tab (Small Wins + Weekly Weight only) ----------
+function WeightTab({ victories, setVictories, weightLog, setWeightLog, today }) {
+  const [victoryInput, setVictoryInput] = useState('');
+  const [victoriesExpanded, setVictoriesExpanded] = useState(false);
+  const addVictory = () => { const text = victoryInput.trim(); if (!text) return; setVictories((prev) => [{ id: 'v' + Date.now(), text, date: today }, ...prev]); setVictoryInput(''); };
+  const deleteVictory = (id) => setVictories((prev) => prev.filter((v) => v.id !== id));
+  const shownVictories = victoriesExpanded ? victories : victories.slice(0, 3);
+
+  const [logDate, setLogDate] = useState(today);
+  const [logValue, setLogValue] = useState('');
+  const [logExpanded, setLogExpanded] = useState(false);
+  const addWeightEntry = () => { const val = parseFloat(logValue); if (!val || val <= 0) return; setWeightLog((prev) => [...prev, { id: 'l' + Date.now(), date: logDate, value: val }]); setLogValue(''); };
+  const deleteLogEntry = (id) => setWeightLog((prev) => prev.filter((e) => e.id !== id));
+  const sortedLogDesc = useMemo(() => [...weightLog].sort((a, b) => (a.date < b.date ? 1 : -1)), [weightLog]);
+  const sortedLogAsc = useMemo(() => [...weightLog].sort((a, b) => (a.date > b.date ? 1 : -1)).slice(-12), [weightLog]);
+  const shownLog = logExpanded ? sortedLogDesc : sortedLogDesc.slice(0, 4);
+  const note = WEIGHT_NOTES[dayOfYear() % WEIGHT_NOTES.length];
+  const formattedDate = new Date().toLocaleDateString('vi-VN', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  return (
+    <div>
+      <SectionHeader title="Giảm cân" subtitle={formattedDate} />
+      <div className="mb-6 border-l-2 pl-3" style={{ borderColor: COLORS.pink }}>
+        <p style={{ color: COLORS.muted }} className="text-xs uppercase tracking-widest mb-1">Ghi chú hôm nay</p>
+        <p style={{ color: COLORS.ink, fontFamily: FONT_DISPLAY }} className="text-base italic leading-relaxed">{note}</p>
+      </div>
+      <div className="rounded-2xl p-4 mb-5" style={{ backgroundColor: COLORS.card, boxShadow: '0 2px 10px rgba(212,114,143,0.10)' }}>
+        <p className="text-xs uppercase tracking-widest mb-1" style={{ color: COLORS.muted }}>Chiến thắng nhỏ</p>
+        <p className="text-xs mb-3" style={{ color: COLORS.muted }}>Những tiến bộ mà cái cân không nói lên được.</p>
+        <div className="flex gap-2 mb-3">
+          <input value={victoryInput} onChange={(e) => setVictoryInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addVictory(); }} placeholder="VD: Quần mặc thoải mái hơn..." className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={{ border: `1px solid ${COLORS.border}`, color: COLORS.ink, fontFamily: FONT_BODY }} />
+          <button onClick={addVictory} className="rounded-xl px-3 flex items-center justify-center flex-shrink-0" style={{ backgroundColor: COLORS.pinkDeep }}><Plus size={14} color="#FFFFFF" /></button>
+        </div>
+        {victories.length === 0 ? (<p className="text-xs text-center py-3" style={{ color: COLORS.muted }}>Chưa có ghi chú nào.</p>) : (
+          <div className="space-y-1.5">
+            {shownVictories.map((v) => (<div key={v.id} className="flex items-center justify-between gap-2"><p className="text-xs flex-1 min-w-0" style={{ color: COLORS.ink }}>🎀 {v.text} <span style={{ color: COLORS.muted }}>({formatShortDate(v.date)})</span></p><button onClick={() => deleteVictory(v.id)} className="flex-shrink-0 opacity-30 hover:opacity-70" style={{ color: COLORS.muted }}><Trash2 size={11} /></button></div>))}
+            {victories.length > 3 && <button onClick={() => setVictoriesExpanded((v) => !v)} className="text-xs" style={{ color: COLORS.pinkDeep }}>{victoriesExpanded ? 'Thu gọn' : `Xem tất cả ${victories.length}`}</button>}
+          </div>
+        )}
+      </div>
+      <div className="rounded-2xl p-4" style={{ backgroundColor: COLORS.card, boxShadow: '0 2px 10px rgba(212,114,143,0.10)' }}>
+        <p className="text-xs uppercase tracking-widest mb-1" style={{ color: COLORS.muted }}>Cân nặng hàng tuần</p>
+        <p className="text-xs mb-3" style={{ color: COLORS.muted }}>Không bắt buộc — chỉ để xem xu hướng chung, không phải áp lực mỗi ngày.</p>
+        <div className="mb-3"><WeightChart data={sortedLogAsc} /></div>
+        <div className="flex gap-2 mb-3">
+          <input type="date" value={logDate} onChange={(e) => setLogDate(e.target.value)} className="rounded-xl px-2 py-2 text-xs" style={{ border: `1px solid ${COLORS.border}`, color: COLORS.ink, backgroundColor: '#FFFFFF' }} />
+          <input type="number" step="0.1" inputMode="decimal" value={logValue} onChange={(e) => setLogValue(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addWeightEntry(); }} placeholder="kg" className="w-20 rounded-xl px-2 py-2 text-xs" style={{ border: `1px solid ${COLORS.border}`, color: COLORS.ink, backgroundColor: '#FFFFFF' }} />
+          <button onClick={addWeightEntry} className="rounded-xl px-3 flex items-center justify-center flex-shrink-0" style={{ backgroundColor: COLORS.pinkDeep }}><Plus size={14} color="#FFFFFF" /></button>
+        </div>
+        {sortedLogDesc.length === 0 ? (<p className="text-xs text-center py-3" style={{ color: COLORS.muted }}>Chưa có ghi chú nào.</p>) : (
+          <div className="space-y-1.5">
+            {shownLog.map((entry) => (<div key={entry.id} className="flex items-center justify-between gap-2"><span className="text-xs" style={{ color: COLORS.muted }}>{formatShortDate(entry.date)}</span><span className="text-xs font-medium flex-1 text-right pr-2" style={{ color: COLORS.ink }}>{entry.value} kg</span><button onClick={() => deleteLogEntry(entry.id)} className="flex-shrink-0 opacity-30 hover:opacity-70" style={{ color: COLORS.muted }}><Trash2 size={11} /></button></div>))}
+            {sortedLogDesc.length > 4 && <button onClick={() => setLogExpanded((v) => !v)} className="text-xs" style={{ color: COLORS.pinkDeep }}>{logExpanded ? 'Thu gọn' : `Xem tất cả ${sortedLogDesc.length}`}</button>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------- Finance tab ----------
+function FinanceTab({ financeData, setFinanceData, today }) {
+  const [viewMonthKey, setViewMonthKey] = useState(monthKeyFor(today));
+  const [showCatForm, setShowCatForm] = useState(false);
+  const [newCatName, setNewCatName] = useState('');
+  const [newCatLimit, setNewCatLimit] = useState('');
+  const [editingCatId, setEditingCatId] = useState(null);
+  const [editCatName, setEditCatName] = useState('');
+  const [editCatLimit, setEditCatLimit] = useState('');
+  const [expenseFormFor, setExpenseFormFor] = useState(null);
+  const [expenseAmount, setExpenseAmount] = useState('');
+  const [expenseNote, setExpenseNote] = useState('');
+  const [editingIncome, setEditingIncome] = useState(false);
+  const [incomeInput, setIncomeInput] = useState('');
+
+  const categories = financeData.categories || [];
+  const monthData = financeData.months[viewMonthKey] || { income: 0, transactions: [] };
+  const spentFor = (catId) => monthData.transactions.filter((t) => t.categoryId === catId).reduce((s, t) => s + t.amount, 0);
+  const totalSpent = monthData.transactions.reduce((s, t) => s + t.amount, 0);
+
+  const goPrevMonth = () => setViewMonthKey((k) => monthKeyFor(shiftMonth(k + '-01', -1)));
+  const goNextMonth = () => setViewMonthKey((k) => monthKeyFor(shiftMonth(k + '-01', 1)));
+
+  const addCategory = () => { const name = newCatName.trim(); if (!name) return; const limit = parseFloat(newCatLimit) || 0; setFinanceData((prev) => ({ ...prev, categories: [...prev.categories, { id: 'c' + Date.now(), name, limit }] })); setNewCatName(''); setNewCatLimit(''); setShowCatForm(false); };
+  const startEditCat = (cat) => { setEditingCatId(cat.id); setEditCatName(cat.name); setEditCatLimit(String(cat.limit || '')); };
+  const saveEditCat = () => { const name = editCatName.trim(); if (!name) return; const limit = parseFloat(editCatLimit) || 0; setFinanceData((prev) => ({ ...prev, categories: prev.categories.map((c) => (c.id === editingCatId ? { ...c, name, limit } : c)) })); setEditingCatId(null); };
+  const deleteCategory = (id) => setFinanceData((prev) => ({ ...prev, categories: prev.categories.filter((c) => c.id !== id) }));
+
+  const saveIncome = () => { const val = parseFloat(incomeInput) || 0; setFinanceData((prev) => ({ ...prev, months: { ...prev.months, [viewMonthKey]: { ...(prev.months[viewMonthKey] || { income: 0, transactions: [] }), income: val } } })); setEditingIncome(false); };
+  const addTransaction = (categoryId) => {
+    const amt = parseFloat(expenseAmount); if (!amt || amt <= 0) return;
+    const tx = { id: 'tx' + Date.now(), categoryId, amount: amt, note: expenseNote.trim(), date: today };
+    setFinanceData((prev) => { const existing = prev.months[viewMonthKey] || { income: 0, transactions: [] }; return { ...prev, months: { ...prev.months, [viewMonthKey]: { ...existing, transactions: [tx, ...existing.transactions] } } }; });
+    setExpenseAmount(''); setExpenseNote(''); setExpenseFormFor(null);
+  };
+  const deleteTransaction = (id) => setFinanceData((prev) => { const existing = prev.months[viewMonthKey] || { income: 0, transactions: [] }; return { ...prev, months: { ...prev.months, [viewMonthKey]: { ...existing, transactions: existing.transactions.filter((t) => t.id !== id) } } }; });
+
+  return (
+    <div>
+      <SectionHeader title="Tài chính" />
+      <div className="flex items-center justify-between mb-4">
+        <button onClick={goPrevMonth} className="p-2" style={{ color: COLORS.ink }} aria-label="Tháng trước"><ChevronLeft size={18} /></button>
+        <p className="text-sm font-medium capitalize" style={{ color: COLORS.ink }}>{periodLabelFor('month', viewMonthKey + '-01')}</p>
+        <button onClick={goNextMonth} className="p-2" style={{ color: COLORS.ink }} aria-label="Tháng sau"><ChevronRight size={18} /></button>
+      </div>
+      <div className="rounded-2xl p-4 mb-5" style={{ backgroundColor: COLORS.card, boxShadow: '0 2px 10px rgba(212,114,143,0.10)' }}>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs" style={{ color: COLORS.muted }}>Thu nhập tháng này</span>
+          {editingIncome ? (
+            <div className="flex gap-1 items-center">
+              <input type="number" value={incomeInput} onChange={(e) => setIncomeInput(e.target.value)} className="w-28 text-xs rounded-lg px-2 py-1" style={{ border: `1px solid ${COLORS.border}` }} autoFocus />
+              <button onClick={saveIncome} className="text-xs font-medium" style={{ color: COLORS.pinkDeep }}>Lưu</button>
+            </div>
+          ) : (
+            <button onClick={() => { setIncomeInput(String(monthData.income || '')); setEditingIncome(true); }} className="flex items-center gap-1 text-sm font-semibold" style={{ color: COLORS.ink }}>{formatVND(monthData.income)}<Edit2 size={11} /></button>
+          )}
+        </div>
+        <div className="flex items-center justify-between text-xs" style={{ color: COLORS.muted }}>
+          <span>Đã chi: {formatVND(totalSpent)}</span>
+          <span>Còn lại: {formatVND((monthData.income || 0) - totalSpent)}</span>
+        </div>
+      </div>
+      <div className="space-y-3 mb-4">
+        {categories.length === 0 ? (
+          <div className="rounded-2xl py-8 px-6 text-center" style={{ border: `2px dashed ${COLORS.pink}` }}><p className="text-sm" style={{ color: COLORS.ink }}>Chưa có danh mục chi tiêu nào.</p></div>
+        ) : categories.map((cat) => {
+          if (editingCatId === cat.id) {
+            return (
+              <div key={cat.id} className="rounded-2xl px-4 py-3" style={{ backgroundColor: COLORS.card, boxShadow: '0 2px 10px rgba(212,114,143,0.10)' }}>
+                <input value={editCatName} onChange={(e) => setEditCatName(e.target.value)} placeholder="Tên danh mục" className="w-full rounded-xl px-3 py-2 text-sm mb-2" style={{ border: `1px solid ${COLORS.border}`, color: COLORS.ink, backgroundColor: '#FFFFFF' }} />
+                <input type="number" value={editCatLimit} onChange={(e) => setEditCatLimit(e.target.value)} placeholder="Hạn mức (VNĐ)" className="w-full rounded-xl px-3 py-2 text-sm mb-2" style={{ border: `1px solid ${COLORS.border}`, color: COLORS.ink, backgroundColor: '#FFFFFF' }} />
+                <div className="flex gap-2"><button onClick={saveEditCat} className="flex-1 text-xs font-medium rounded-xl py-2" style={{ backgroundColor: COLORS.pinkDeep, color: '#FFFFFF' }}>Lưu</button><button onClick={() => setEditingCatId(null)} className="px-3 rounded-xl text-xs" style={{ color: COLORS.muted, border: `1px solid ${COLORS.border}` }}>Hủy</button></div>
+              </div>
+            );
+          }
+          const spent = spentFor(cat.id);
+          const pct = cat.limit ? Math.min(100, (spent / cat.limit) * 100) : 0;
+          const over = cat.limit > 0 && spent > cat.limit;
+          const txs = monthData.transactions.filter((t) => t.categoryId === cat.id);
+          return (
+            <div key={cat.id} className="rounded-2xl px-4 py-3" style={{ backgroundColor: COLORS.card, boxShadow: '0 2px 10px rgba(212,114,143,0.10)' }}>
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-sm font-medium" style={{ color: COLORS.ink }}>{cat.name}</p>
+                <div className="flex items-center gap-0.5"><button onClick={() => startEditCat(cat)} className="p-1 opacity-40 hover:opacity-70" style={{ color: COLORS.muted }}><Edit2 size={12} /></button><button onClick={() => deleteCategory(cat.id)} className="p-1 opacity-40 hover:opacity-70" style={{ color: COLORS.muted }}><Trash2 size={13} /></button></div>
+              </div>
+              <div className="flex items-center justify-between text-xs mb-1" style={{ color: over ? COLORS.pinkDeep : COLORS.muted }}>
+                <span>{formatVND(spent)} / {formatVND(cat.limit)}</span>
+                {over && <span>Vượt hạn mức</span>}
+              </div>
+              <div className="h-1.5 rounded-full overflow-hidden mb-2" style={{ backgroundColor: COLORS.border }}><div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: over ? COLORS.pinkDeep : COLORS.pink }} /></div>
+              {expenseFormFor === cat.id ? (
+                <div className="flex gap-2 mb-2">
+                  <input type="number" inputMode="decimal" value={expenseAmount} onChange={(e) => setExpenseAmount(e.target.value)} placeholder="Số tiền" className="w-24 rounded-lg px-2 py-1.5 text-xs" style={{ border: `1px solid ${COLORS.border}`, color: COLORS.ink }} />
+                  <input value={expenseNote} onChange={(e) => setExpenseNote(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addTransaction(cat.id); }} placeholder="Ghi chú..." className="flex-1 rounded-lg px-2 py-1.5 text-xs" style={{ border: `1px solid ${COLORS.border}`, color: COLORS.ink }} />
+                  <button onClick={() => addTransaction(cat.id)} className="rounded-lg px-2 flex items-center justify-center" style={{ backgroundColor: COLORS.pinkDeep }}><Plus size={13} color="#FFFFFF" /></button>
+                </div>
+              ) : (<button onClick={() => setExpenseFormFor(cat.id)} className="text-xs" style={{ color: COLORS.pinkDeep }}>+ Ghi chi tiêu</button>)}
+              {txs.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  {txs.slice(0, 3).map((t) => (<div key={t.id} className="flex items-center justify-between text-xs gap-2"><span className="truncate flex-1" style={{ color: COLORS.muted }}>{t.note || '(không ghi chú)'}</span><span style={{ color: COLORS.ink }}>{formatVND(t.amount)}</span><button onClick={() => deleteTransaction(t.id)} className="flex-shrink-0 opacity-30 hover:opacity-70" style={{ color: COLORS.muted }}><Trash2 size={10} /></button></div>))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {showCatForm ? (
+        <div className="rounded-2xl p-4" style={{ backgroundColor: COLORS.card, boxShadow: '0 2px 10px rgba(212,114,143,0.10)' }}>
+          <input value={newCatName} onChange={(e) => setNewCatName(e.target.value)} placeholder="Tên danh mục (VD: Ăn uống)" className="w-full rounded-xl px-3 py-2 text-sm mb-2" style={{ border: `1px solid ${COLORS.border}`, color: COLORS.ink, backgroundColor: '#FFFFFF' }} />
+          <input type="number" value={newCatLimit} onChange={(e) => setNewCatLimit(e.target.value)} placeholder="Hạn mức (VNĐ)" className="w-full rounded-xl px-3 py-2 text-sm mb-3" style={{ border: `1px solid ${COLORS.border}`, color: COLORS.ink, backgroundColor: '#FFFFFF' }} />
+          <div className="flex gap-2"><button onClick={addCategory} className="flex-1 text-sm font-medium rounded-xl py-2" style={{ backgroundColor: COLORS.pinkDeep, color: '#FFFFFF' }}>Thêm danh mục</button><button onClick={() => setShowCatForm(false)} className="px-4 rounded-xl text-sm" style={{ color: COLORS.muted, border: `1px solid ${COLORS.border}` }}>Hủy</button></div>
+        </div>
+      ) : (<button onClick={() => setShowCatForm(true)} className="w-full rounded-2xl py-3 flex items-center justify-center gap-2 text-sm font-medium" style={{ border: `2px dashed ${COLORS.pink}`, color: COLORS.pinkDeep }}><Plus size={16} />Thêm danh mục chi tiêu</button>)}
+    </div>
+  );
+}
+
+// ---------- Calendar tab ----------
+function CalendarTab({ habits, completions, journalEntries, today }) {
+  const [viewMonth, setViewMonth] = useState(() => { const d = new Date(today + 'T00:00:00'); return { year: d.getFullYear(), month: d.getMonth() }; });
+  const isDone = useCallback((habitId, dateStr) => !!(completions[habitId] && completions[habitId].includes(dateStr)), [completions]);
+  const dayStatus = useCallback((dateStr) => { const scheduled = habits.filter((h) => isScheduled(h, dateStr)); if (scheduled.length === 0) return null; const doneCount = scheduled.filter((h) => isDone(h.id, dateStr)).length; return doneCount / scheduled.length; }, [habits, isDone]);
+  const currentStreak = useMemo(() => { let streak = 0, grace = false; for (let o = 0; o > -400; o--) { const d = shiftDate(today, o); const s = dayStatus(d); if (s === null) continue; if (s === 1) streak += 1; else if (o === 0 && !grace) grace = true; else break; } return streak; }, [dayStatus, today]);
+  const longestStreak = useMemo(() => { let longest = 0, cur = 0; for (let o = -365; o <= 0; o++) { const d = shiftDate(today, o); const s = dayStatus(d); if (s === null) continue; if (s === 1) { cur += 1; longest = Math.max(longest, cur); } else cur = 0; } return longest; }, [dayStatus, today]);
+  const grid = getMonthGrid(viewMonth.year, viewMonth.month);
+  const monthLabel = new Date(viewMonth.year, viewMonth.month, 1).toLocaleDateString('vi-VN', { month: 'long', year: 'numeric' });
+  const goPrevMonth = () => setViewMonth((v) => { const m = v.month - 1; return m < 0 ? { year: v.year - 1, month: 11 } : { year: v.year, month: m }; });
+  const goNextMonth = () => setViewMonth((v) => { const m = v.month + 1; return m > 11 ? { year: v.year + 1, month: 0 } : { year: v.year, month: m }; });
+  return (
+    <div>
+      <SectionHeader title="Lịch thành tựu" />
+      <div className="flex gap-3 mb-5">
+        <div className="flex-1 rounded-2xl px-4 py-3" style={{ backgroundColor: COLORS.card, boxShadow: '0 2px 10px rgba(212,114,143,0.10)' }}><p className="text-xs" style={{ color: COLORS.muted }}>Chuỗi hiện tại</p><p className="text-2xl font-semibold" style={{ color: COLORS.ink, fontFamily: FONT_DISPLAY }}>{currentStreak}<span className="text-xs font-normal ml-1">ngày</span></p></div>
+        <div className="flex-1 rounded-2xl px-4 py-3" style={{ backgroundColor: COLORS.card, boxShadow: '0 2px 10px rgba(212,114,143,0.10)' }}><p className="text-xs" style={{ color: COLORS.muted }}>Kỷ lục</p><p className="text-2xl font-semibold" style={{ color: COLORS.ink, fontFamily: FONT_DISPLAY }}>{longestStreak}<span className="text-xs font-normal ml-1">ngày</span></p></div>
+      </div>
+      <div className="rounded-2xl p-4" style={{ backgroundColor: COLORS.cardSoft, boxShadow: '0 2px 10px rgba(212,114,143,0.08)' }}>
+        <div className="flex items-center justify-between mb-3">
+          <button onClick={goPrevMonth} className="p-1" style={{ color: COLORS.ink }} aria-label="Tháng trước"><ChevronLeft size={18} /></button>
+          <p className="text-sm font-medium capitalize" style={{ color: COLORS.ink }}>{monthLabel}</p>
+          <button onClick={goNextMonth} className="p-1" style={{ color: COLORS.ink }} aria-label="Tháng sau"><ChevronRight size={18} /></button>
+        </div>
+        <div className="grid grid-cols-7 gap-1.5 mb-2">{WEEKDAYS.map((w) => <div key={w.value} className="text-center text-xs" style={{ color: COLORS.muted }}>{w.label}</div>)}</div>
+        <div className="grid grid-cols-7 gap-1.5">
+          {grid.map((day, i) => {
+            if (day === null) return <div key={'b' + i} />;
+            const dateStr = `${viewMonth.year}-${pad(viewMonth.month + 1)}-${pad(day)}`;
+            const isFuture = dateStr > today; const isToday = dateStr === today;
+            const status = isFuture ? null : dayStatus(dateStr);
+            const j = journalEntries[dateStr];
+            const moodColor = j && j.mood ? (MOODS.find((m) => m.value === j.mood) || {}).color : null;
+            const hasJournalText = !!(j && ((j.note && j.note.trim()) || (j.gratitude || []).some((g) => g && g.trim())));
+            const dotColor = !isFuture ? moodColor || (hasJournalText ? COLORS.gold : null) : null;
+            const textColor = status !== null && status >= 0.5 ? '#FFFFFF' : isFuture ? 'rgba(92,69,83,0.3)' : COLORS.ink;
+            return (
+              <div key={dateStr} className="aspect-square rounded-lg flex items-center justify-center relative" style={{ backgroundColor: status === null ? 'transparent' : bucketColor(status), border: isToday ? `2px solid ${COLORS.gold}` : status === null ? `1px solid ${COLORS.border}` : 'none' }}>
+                <span className="text-xs" style={{ color: textColor }}>{day}</span>
+                {dotColor && <div className="absolute bottom-0.5 right-0.5 w-1.5 h-1.5 rounded-full" style={{ backgroundColor: dotColor, border: '1px solid rgba(255,255,255,0.7)' }} />}
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex items-center justify-end gap-1 mt-3"><span className="text-xs mr-1" style={{ color: COLORS.muted }}>Ít</span>{[0, 0.25, 0.6, 1].map((v, i) => <div key={i} className="w-2.5 h-2.5 rounded" style={{ backgroundColor: bucketColor(v) }} />)}<span className="text-xs ml-1" style={{ color: COLORS.muted }}>Nhiều</span></div>
+        <p className="text-xs text-center mt-2" style={{ color: COLORS.muted }}>Chấm nhỏ ở góc là màu tâm trạng bạn chọn trong Nhật ký</p>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Sidebar navigation ----------
+function Sidebar({ active, onChange, collapsed, onToggle }) {
+  const tabs = [
+    { key: 'habits', label: 'Thói quen', Icon: Heart },
+    { key: 'journal', label: 'Nhật ký', Icon: BookOpen },
+    { key: 'planner', label: 'Kế hoạch', Icon: ListChecks },
+    { key: 'rewards', label: 'Thưởng & Wishlist', Icon: Gift },
+    { key: 'weight', label: 'Giảm cân', Icon: Activity },
+    { key: 'finance', label: 'Tài chính', Icon: Wallet },
+    { key: 'calendar', label: 'Lịch', Icon: Calendar },
+  ];
+  return (
+    <div className="h-screen flex-shrink-0 flex flex-col sticky top-0" style={{ width: collapsed ? 56 : 220, backgroundColor: '#FFFFFF', borderRight: `1px solid ${COLORS.border}`, transition: 'width 180ms ease', overflow: 'hidden' }}>
+      <button onClick={onToggle} className="flex items-center gap-3 px-4 py-4 flex-shrink-0" style={{ color: COLORS.ink }} aria-label={collapsed ? 'Mở rộng menu' : 'Thu gọn menu'}>
+        <Menu size={20} />
+        {!collapsed && <span className="text-xs font-medium" style={{ color: COLORS.muted }}>Thu gọn</span>}
+      </button>
+      <div className="flex-1 overflow-y-auto px-2 pb-4">
+        {tabs.map((t) => {
+          const Icon = t.Icon; const isActive = active === t.key;
+          const extraProps = t.key === 'habits' ? { fill: isActive ? COLORS.pinkDeep : 'none' } : {};
+          return (
+            <button key={t.key} onClick={() => onChange(t.key)} className="w-full flex items-center gap-3 px-3 py-3 rounded-xl mb-1" style={{ backgroundColor: isActive ? 'rgba(212,114,143,0.12)' : 'transparent' }} title={t.label}>
+              <Icon size={19} style={{ color: isActive ? COLORS.pinkDeep : COLORS.muted, flexShrink: 0 }} {...extraProps} />
+              {!collapsed && <span className="text-sm font-medium truncate text-left" style={{ color: isActive ? COLORS.pinkDeep : COLORS.muted }}>{t.label}</span>}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ---------- Root app ----------
+function HabitTracker() {
+  const [activeTab, setActiveTab] = useState('habits');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  const [habits, setHabits] = useState([]);
+  const [completions, setCompletions] = useState({});
+  const [journalEntries, setJournalEntries] = useState({});
+  const [plannerData, setPlannerData] = useState({ day: {}, week: {}, month: {} });
+  const [goalsData, setGoalsData] = useState({ goals: [], achievements: {} });
+  const [weightVictories, setWeightVictories] = useState([]);
+  const [weightLog, setWeightLog] = useState([]);
+  const [wishlistData, setWishlistData] = useState([]);
+  const [financeData, setFinanceData] = useState({ categories: [], months: {} });
+  const [loading, setLoading] = useState(true);
+  const [saveError, setSaveError] = useState(false);
+  const [importMessage, setImportMessage] = useState(null);
+  const fileInputRef = useRef(null);
+  const today = todayStr();
+
+  const exportData = () => {
+    const payload = { exportedAt: new Date().toISOString(), habits, completions, journalEntries, plannerData, goalsData, weightVictories, weightLog, wishlistData, financeData };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `nhat-ky-backup-${today}.json`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+  const importData = (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    if (!window.confirm('Nhập dữ liệu sẽ THAY THẾ toàn bộ dữ liệu hiện tại trên thiết bị này. Bạn có chắc chắn không?')) { e.target.value = ''; return; }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = JSON.parse(event.target.result);
+        if (Array.isArray(data.habits)) setHabits(data.habits);
+        if (data.completions) setCompletions(data.completions);
+        if (data.journalEntries) setJournalEntries(data.journalEntries);
+        if (data.plannerData) setPlannerData(data.plannerData);
+        if (data.goalsData) setGoalsData(data.goalsData);
+        if (Array.isArray(data.weightVictories)) setWeightVictories(data.weightVictories);
+        if (Array.isArray(data.weightLog)) setWeightLog(data.weightLog);
+        if (Array.isArray(data.wishlistData)) setWishlistData(data.wishlistData);
+        if (data.financeData) setFinanceData(data.financeData);
+        setImportMessage({ type: 'success', text: 'Đã khôi phục dữ liệu thành công!' });
+      } catch (err) { setImportMessage({ type: 'error', text: 'File không hợp lệ, thử lại nhé.' }); }
+    };
+    reader.readAsText(file); e.target.value = '';
+  };
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const [habitsRes, journalRes, plannerRes, goalsRes, victoriesRes, logRes, wishlistRes, financeRes] = await Promise.allSettled([
+        window.storage.get(HABITS_KEY), window.storage.get(JOURNAL_KEY), window.storage.get(PLANNER_KEY), window.storage.get(GOALS_KEY),
+        window.storage.get(WEIGHT_VICTORIES_KEY), window.storage.get(WEIGHT_LOG_KEY), window.storage.get(WISHLIST_KEY), window.storage.get(FINANCE_KEY),
+      ]);
+      if (!mounted) return;
+      if (habitsRes.status === 'fulfilled' && habitsRes.value && habitsRes.value.value) {
+        try { const parsed = JSON.parse(habitsRes.value.value); setHabits(parsed.habits || DEFAULT_HABITS); setCompletions(parsed.completions || {}); }
+        catch (e) { setHabits(DEFAULT_HABITS); }
+      } else { setHabits(DEFAULT_HABITS); }
+      if (journalRes.status === 'fulfilled' && journalRes.value && journalRes.value.value) {
+        try { setJournalEntries(JSON.parse(journalRes.value.value).entries || {}); } catch (e) { setJournalEntries({}); }
+      }
+      if (plannerRes.status === 'fulfilled' && plannerRes.value && plannerRes.value.value) {
+        try { const parsed = JSON.parse(plannerRes.value.value); setPlannerData({ day: parsed.day || {}, week: parsed.week || {}, month: parsed.month || {} }); }
+        catch (e) { setPlannerData({ day: {}, week: {}, month: {} }); }
+      }
+      if (goalsRes.status === 'fulfilled' && goalsRes.value && goalsRes.value.value) {
+        try { const parsed = JSON.parse(goalsRes.value.value); setGoalsData({ goals: parsed.goals || [], achievements: parsed.achievements || {} }); }
+        catch (e) { setGoalsData({ goals: [], achievements: {} }); }
+      }
+      if (victoriesRes.status === 'fulfilled' && victoriesRes.value && victoriesRes.value.value) {
+        try { const parsed = JSON.parse(victoriesRes.value.value); setWeightVictories(Array.isArray(parsed) ? parsed : []); } catch (e) { setWeightVictories([]); }
+      }
+      if (logRes.status === 'fulfilled' && logRes.value && logRes.value.value) {
+        try { const parsed = JSON.parse(logRes.value.value); setWeightLog(Array.isArray(parsed) ? parsed : []); } catch (e) { setWeightLog([]); }
+      }
+      if (wishlistRes.status === 'fulfilled' && wishlistRes.value && wishlistRes.value.value) {
+        try { const parsed = JSON.parse(wishlistRes.value.value); setWishlistData(Array.isArray(parsed) ? parsed : []); } catch (e) { setWishlistData([]); }
+      }
+      if (financeRes.status === 'fulfilled' && financeRes.value && financeRes.value.value) {
+        try { const parsed = JSON.parse(financeRes.value.value); setFinanceData({ categories: parsed.categories || [], months: parsed.months || {} }); } catch (e) { setFinanceData({ categories: [], months: {} }); }
+      }
+      setLoading(false);
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  useEffect(() => { if (loading) return; const t = setTimeout(async () => { try { const r = await window.storage.set(HABITS_KEY, JSON.stringify({ habits, completions })); setSaveError(!r); } catch (e) { setSaveError(true); } }, 300); return () => clearTimeout(t); }, [habits, completions, loading]);
+  useEffect(() => { if (loading) return; const t = setTimeout(async () => { try { const r = await window.storage.set(JOURNAL_KEY, JSON.stringify({ entries: journalEntries })); setSaveError(!r); } catch (e) { setSaveError(true); } }, 300); return () => clearTimeout(t); }, [journalEntries, loading]);
+  useEffect(() => { if (loading) return; const t = setTimeout(async () => { try { const r = await window.storage.set(PLANNER_KEY, JSON.stringify(plannerData)); setSaveError(!r); } catch (e) { setSaveError(true); } }, 300); return () => clearTimeout(t); }, [plannerData, loading]);
+  useEffect(() => { if (loading) return; const t = setTimeout(async () => { try { const r = await window.storage.set(GOALS_KEY, JSON.stringify(goalsData)); setSaveError(!r); } catch (e) { setSaveError(true); } }, 300); return () => clearTimeout(t); }, [goalsData, loading]);
+  useEffect(() => { if (loading) return; const t = setTimeout(async () => { try { const r = await window.storage.set(WEIGHT_VICTORIES_KEY, JSON.stringify(weightVictories)); setSaveError(!r); } catch (e) { setSaveError(true); } }, 300); return () => clearTimeout(t); }, [weightVictories, loading]);
+  useEffect(() => { if (loading) return; const t = setTimeout(async () => { try { const r = await window.storage.set(WEIGHT_LOG_KEY, JSON.stringify(weightLog)); setSaveError(!r); } catch (e) { setSaveError(true); } }, 300); return () => clearTimeout(t); }, [weightLog, loading]);
+  useEffect(() => { if (loading) return; const t = setTimeout(async () => { try { const r = await window.storage.set(WISHLIST_KEY, JSON.stringify(wishlistData)); setSaveError(!r); } catch (e) { setSaveError(true); } }, 300); return () => clearTimeout(t); }, [wishlistData, loading]);
+  useEffect(() => { if (loading) return; const t = setTimeout(async () => { try { const r = await window.storage.set(FINANCE_KEY, JSON.stringify(financeData)); setSaveError(!r); } catch (e) { setSaveError(true); } }, 300); return () => clearTimeout(t); }, [financeData, loading]);
+
+  const bgPattern = { backgroundColor: COLORS.bg, backgroundImage: 'repeating-linear-gradient(45deg, rgba(255,255,255,0.5) 0px, rgba(255,255,255,0.5) 1px, transparent 1px, transparent 34px), repeating-linear-gradient(-45deg, rgba(255,255,255,0.5) 0px, rgba(255,255,255,0.5) 1px, transparent 1px, transparent 34px)' };
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center" style={{ ...bgPattern, fontFamily: FONT_BODY }}><div className="text-sm" style={{ color: COLORS.muted }}>🐰 Đang tải...</div></div>;
+
+  return (
+    <div className="min-h-screen w-full flex" style={{ ...bgPattern, fontFamily: FONT_BODY }}>
+      <Sidebar active={activeTab} onChange={setActiveTab} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed((v) => !v)} />
+      <div className="flex-1 min-w-0" style={{ maxHeight: '100vh', overflowY: 'auto' }}>
+        <div className="max-w-2xl mx-auto px-5 py-6">
+          {activeTab === 'habits' && <HabitsTab habits={habits} setHabits={setHabits} completions={completions} setCompletions={setCompletions} today={today} />}
+          {activeTab === 'journal' && <JournalTab journalEntries={journalEntries} setJournalEntries={setJournalEntries} today={today} />}
+          {activeTab === 'planner' && <PlannerTab plannerData={plannerData} setPlannerData={setPlannerData} today={today} />}
+          {activeTab === 'rewards' && <RewardsTab goalsData={goalsData} setGoalsData={setGoalsData} wishlistData={wishlistData} setWishlistData={setWishlistData} today={today} />}
+          {activeTab === 'weight' && <WeightTab victories={weightVictories} setVictories={setWeightVictories} weightLog={weightLog} setWeightLog={setWeightLog} today={today} />}
+          {activeTab === 'finance' && <FinanceTab financeData={financeData} setFinanceData={setFinanceData} today={today} />}
+          {activeTab === 'calendar' && (
+            <>
+              <CalendarTab habits={habits} completions={completions} journalEntries={journalEntries} today={today} />
+              <div className="rounded-2xl p-4 mt-5" style={{ backgroundColor: COLORS.card, boxShadow: '0 2px 10px rgba(212,114,143,0.10)' }}>
+                <p className="text-xs uppercase tracking-widest mb-1" style={{ color: COLORS.muted }}>Dữ liệu của bạn</p>
+                <p className="text-xs mb-3" style={{ color: COLORS.muted }}>Sao lưu để phòng khi cần khôi phục hoặc chuyển sang thiết bị khác.</p>
+                <div className="flex gap-2">
+                  <button onClick={exportData} className="flex-1 rounded-xl py-2 text-xs font-medium" style={{ backgroundColor: COLORS.pinkDeep, color: '#FFFFFF' }}>Xuất dữ liệu</button>
+                  <button onClick={() => fileInputRef.current && fileInputRef.current.click()} className="flex-1 rounded-xl py-2 text-xs font-medium" style={{ border: `1px solid ${COLORS.border}`, color: COLORS.ink }}>Nhập dữ liệu</button>
+                </div>
+                <input ref={fileInputRef} type="file" accept="application/json" onChange={importData} style={{ display: 'none' }} />
+                {importMessage && <p className="text-xs mt-2 text-center" style={{ color: importMessage.type === 'error' ? COLORS.pinkDeep : COLORS.gold }}>{importMessage.text}</p>}
+              </div>
+            </>
+          )}
+          {saveError && <p className="text-xs text-center mt-2" style={{ color: COLORS.pinkDeep }}>Chưa lưu được thay đổi. Thử lại.</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<HabitTracker />);
+</script>
+</body>
+</html>
